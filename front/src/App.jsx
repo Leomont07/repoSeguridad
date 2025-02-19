@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Login from "./components/Login";
 import Home from "./components/Home";
+import Registro from "./components/Registro";
 
 const App = () => {
   return (
@@ -9,7 +10,8 @@ const App = () => {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/home" element={<Home />} />
-        <Route path="*" element={<Login />} /> {/* Ruta por defecto */}
+        <Route path="/registro" element={<Registro />} />
+        <Route path="*" element={<Login />} />
       </Routes>
     </Router>
   );

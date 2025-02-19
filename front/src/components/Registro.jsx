@@ -3,36 +3,34 @@ import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import "bootstrap/dist/css/bootstrap.min.css";
 
-const Login = () => {
+const Registro = () => {
   const [usuario, setUsuario] = useState("");
+  const [correo, setCorreo] = useState("");
   const [contrasena, setContrasena] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
+  const handleRegistro = async (e) => {
     e.preventDefault();
-
-    
-    console.log("Datos: " + usuario + " " + contrasena)
   
-    if (!usuario || !contrasena) {
-      setError("Usuario y contraseña son requeridos");
+    if (!usuario || !correo || !contrasena) {
+      setError("Todos los campos son requeridos");
       return;
     }
   
     try {
-      const response = await axios.post("http://localhost:3000/login", {
+      const response = await axios.post("http://localhost:3000/registro", {
         usuario,
+        correo,
         contrasena,
       });
   
       if (response.data.statusCode === 200) {
-        const token = response.data.intDataMessage[0].credentials;
-        localStorage.setItem("token", token);
-        navigate("/home");
+        navigate("/login");
       }
     } catch (err) {
-      setError("Credenciales inválidas");
+      const errorMessage = err.response?.data?.intDataMessage[0]?.error || "Error en el registro";
+      setError(errorMessage);
     }
   };
 
@@ -49,8 +47,8 @@ const Login = () => {
           width: "300px",
         }}
       >
-        <h1 className="text-center mb-4">Login</h1>
-        <form onSubmit={handleLogin}>
+        <h1 className="text-center mb-4">Registro</h1>
+        <form onSubmit={handleRegistro}>
           <div className="mb-3">
             <label htmlFor="usuario" className="form-label">
               Usuario:
@@ -61,6 +59,18 @@ const Login = () => {
               id="usuario"
               value={usuario}
               onChange={(e) => setUsuario(e.target.value)}
+            />
+          </div>
+          <div className="mb-3">
+            <label htmlFor="correo" className="form-label">
+              Correo:
+            </label>
+            <input
+              type="email"
+              className="form-control"
+              id="correo"
+              value={correo}
+              onChange={(e) => setCorreo(e.target.value)}
             />
           </div>
           <div className="mb-3">
@@ -77,11 +87,11 @@ const Login = () => {
           </div>
           {error && <div className="text-danger mb-3">{error}</div>}
           <button type="submit" className="btn btn-primary w-100">
-            Login
+            Registrarse
           </button>
           <hr />
-          <Link className="btn btn-primary w-100" to={'/registro'}>
-            Registro
+          <Link className="btn btn-primary m-10}}} w-100" to={'/login'}>
+            Login
           </Link>
         </form>
       </div>
@@ -89,4 +99,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default Registro;
