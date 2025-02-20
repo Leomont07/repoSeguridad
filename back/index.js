@@ -27,7 +27,6 @@ app.use(cors({
 
 app.use(bodyParser.json());
 
-
 // Función para logib
 app.post("/login", async (req, res) => {
   const { usuario, contrasena } = req.body;
@@ -35,24 +34,21 @@ app.post("/login", async (req, res) => {
   if (!usuario || !contrasena) {
     return res.status(400).json({
       statusCode: 400,
-      intDataMessage: [{ error: "El usuario y contraseña son requeridos" }],
+      intDataMessage: [{ error: "Usuario y contraseña son requeridos" }],
     });
   }
 
   try {
-    const user = await db
-      .collection("users")
-      .where("username", "==", usuario)
-      .get();
+    const userSnapshot = await db.collection("users") .where("username", "==", usuario).get();
 
-    if (user.empty) {
+    if (userSnapshot.empty) {
       return res.status(401).json({
         statusCode: 401,
         intDataMessage: [{ error: "Credenciales inválidas" }],
       });
     }
 
-    const userDoc = user.docs[0];
+    const userDoc = userSnapshot.docs[0];
     const userData = userDoc.data();
 
     const compararPassword = await bcrypt.compare(contrasena, userData.password);
@@ -64,11 +60,27 @@ app.post("/login", async (req, res) => {
       });
     }
 
+    const roleSnapshot = await db.collection("roles").where("role_name", "==", userData.role).get();
+
+    if (roleSnapshot.empty) {
+      return res.status(404).json({
+        statusCode: 404,
+        intDataMessage: [{ error: "Rol no encontrado" }],
+      });
+    }
+
+    const roleData = roleSnapshot.docs[0].data();
+    const permissions = roleData.permissions || [];
+
+    const token = jwt.sign(
+      { userId: userDoc.id, username: userData.username, role: userData.role, permissions },
+      "secretooo",
+      { expiresIn: "1h" }
+    );
+
     await db.collection("users").doc(userDoc.id).update({
       last_login: new Date(),
     });
-
-    const token = jwt.sign({ userId: userDoc.id }, "secretooo", { expiresIn: "1m" });
 
     return res.status(200).json({
       statusCode: 200,
@@ -138,6 +150,164 @@ app.post("/registro", async (req, res) => {
     });
   } catch (err) {
     console.error("Error en el registro:", err);
+    return res.status(500).json({
+      statusCode: 500,
+      intDataMessage: [{ error: "Error en el servidor" }],
+    });
+  }
+});
+
+// Funcion para verificar permisos
+const verifyToken = (requiredPermissions) => {
+  return (req, res, next) => {
+    const token = req.headers.authorization?.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({
+        statusCode: 401,
+        intDataMessage: [{ error: "Token no proporcionado" }],
+      });
+    }
+
+    try {
+      const decoded = jwt.verify(token, "secretooo"); // Verificar el token
+      req.user = decoded; // Adjuntar la información del usuario al request
+
+      // Verificar permisos
+      const userPermissions = decoded.permissions || [];
+      const hasPermission = requiredPermissions.every((perm) =>
+        userPermissions.includes(perm)
+      );
+
+      if (!hasPermission) {
+        return res.status(403).json({
+          statusCode: 403,
+          intDataMessage: [{ error: "No tienes permisos para realizar esta acción" }],
+        });
+      }
+
+      next(); // Continuar si todo está bien
+    } catch (err) {
+      return res.status(401).json({
+        statusCode: 401,
+        intDataMessage: [{ error: "Token inválido o expirado" }],
+      });
+    }
+  };
+};
+
+//Funcion para obtener usuarios
+app.get("/getUsers", verifyToken(["get_user"]), async (req, res) => {
+  try {
+    const usersSnapshot = await db.collection("users").get();
+    const users = usersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+    return res.status(200).json({
+      statusCode: 200,
+      intDataMessage: users,
+    });
+  } catch (err) {
+    console.error("Error al obtener usuarios:", err);
+    return res.status(500).json({
+      statusCode: 500,
+      intDataMessage: [{ error: "Error en el servidor" }],
+    });
+  }
+});
+
+app.put("/updateUser/:userId", verifyToken(["update_user"]), async (req, res) => {
+  const { userId } = req.params;
+  const { username, email, role } = req.body;
+
+  try {
+    await db.collection("users").doc(userId).update({ username, email, role });
+
+    return res.status(200).json({
+      statusCode: 200,
+      intDataMessage: [{ message: "Usuario actualizado exitosamente" }],
+    });
+  } catch (err) {
+    console.error("Error al actualizar usuario:", err);
+    return res.status(500).json({
+      statusCode: 500,
+      intDataMessage: [{ error: "Error en el servidor" }],
+    });
+  }
+});
+
+app.delete("/deleteUser/:userId", verifyToken(["delete_user"]), async (req, res) => {
+  const { userId } = req.params;
+  console.log("ID del usuario a eliminar:", userId);
+
+  try {
+    await db.collection("users").doc(userId).delete();
+
+    return res.status(200).json({
+      statusCode: 200,
+      intDataMessage: [{ message: "Usuario eliminado exitosamente" }],
+    });
+  } catch (err) {
+    console.error("Error al eliminar usuario:", err);
+    return res.status(500).json({
+      statusCode: 500,
+      intDataMessage: [{ error: "Error en el servidor" }],
+    });
+  }
+});
+
+app.post("/addPermissions", verifyToken(["add_permissions"]), async (req, res) => {
+    const { role_name, permissions } = req.body;
+
+    try {
+      await db.collection("roles").add({ role_name, permissions });
+
+      return res.status(200).json({
+        statusCode: 200,
+        intDataMessage: [{ message: "Rol agregado exitosamente" }],
+      });
+    } catch (err) {
+      console.error("Error al agregar rol:", err);
+      return res.status(500).json({
+        statusCode: 500,
+        intDataMessage: [{ error: "Error en el servidor" }],
+      });
+    }
+  }
+);
+
+app.put("/updatePermissions/:roleId", verifyToken(["update_permissions"]), async (req, res) => {
+  const { roleId } = req.params;
+  const { role_name } = req.body;
+  const { permissions } = req.body;
+
+  try {
+    await db.collection("roles").doc(roleId).update({ role_name, permissions });
+
+    return res.status(200).json({
+      statusCode: 200,
+      intDataMessage: [{ message: "Rol actualizado exitosamente" }],
+    });
+  } catch (err) {
+    console.error("Error al actualizar rol:", err);
+    return res.status(500).json({
+      statusCode: 500,
+      intDataMessage: [{ error: "Error en el servidor" }],
+    });
+  }
+});
+
+app.delete("/deletePermissions/:roleId", verifyToken(["delete_permissions"]), async (req, res) => {
+  const { roleId } = req.params;
+
+  try {
+    await db.collection("roles").doc(roleId).delete();
+
+    return res.status(200).json({
+      statusCode: 200,
+      intDataMessage: [{ message: "Rol eliminado exitosamente" }],
+    });
+  } catch (err) {
+    console.error("Error al eliminar rol:", err);
     return res.status(500).json({
       statusCode: 500,
       intDataMessage: [{ error: "Error en el servidor" }],
